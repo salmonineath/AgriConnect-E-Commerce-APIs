@@ -1,34 +1,38 @@
 import { badRequestError, notFoundError } from "@/utils/helper/error-helper";
 import { categoryModel } from "@/models/category-model";
 
-/**
- * Service to create a new category
- * @param name - Category name
- * @param description - Category description
- * @returns Newly created category
- */
-export const createCategoryService = async (name: string, description: string) => {
-  // Validate name field
-  if (!name?.trim()) {
-    throw badRequestError("Category name is required.");
-  }
+// Escape user input before putting it in a RegExp (prevents regex injection)
+const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-  // Check if a category with the same name already exists (case-insensitive)
+const assertNameIsFree = async (name: string, ignoreId?: string) => {
   const existingCategory = await categoryModel.findOne({
-    name: { $regex: `^${name.trim()}$`, $options: "i" }
+    name: { $regex: `^${escapeRegex(name)}$`, $options: "i" },
+    ...(ignoreId ? { _id: { $ne: ignoreId } } : {}),
   });
 
   if (existingCategory) {
     throw badRequestError("Category with this name already exists.");
   }
+};
 
-  // Create and save the new category
-  const createdCategory = await categoryModel.create({
+/**
+ * Service to create a new category
+ * @param name - Category name
+ * @param description - Category description
+ * @param userId - Admin who created it
+ * @returns Newly created category
+ */
+export const createCategoryService = async (name: string, description?: string, userId?: string) => {
+  if (typeof name !== "string" || !name.trim()) {
+    throw badRequestError("Category name is required.");
+  }
+  await assertNameIsFree(name.trim());
+
+  return categoryModel.create({
     name: name.trim(),
-    description: description?.trim(),
+    des: description?.trim(),
+    user_id: userId,
   });
-
-  return createdCategory;
 };
 
 /**
@@ -36,13 +40,7 @@ export const createCategoryService = async (name: string, description: string) =
  * @returns 
  */
 export const getAllCategoriesService = async () => {
-  const categoriesList = await categoryModel.find().lean();
-
-  if (categoriesList.length === 0) {
-    throw notFoundError("No categories found.");
-  }
-
-  return categoriesList;
+  return categoryModel.find().sort({ name: 1 }).lean();
 };
 
 /**
@@ -61,6 +59,29 @@ export const getCategoryByIdService = async (categoryId: string) => {
 };
 
 /**
+ * Service to update a category's name and/or description
+ */
+export const updateCategoryService = async (categoryId: string, name?: string, description?: string) => {
+  const category = await categoryModel.findById(categoryId);
+  if (!category) {
+    throw notFoundError("Category not found.");
+  }
+
+  if (name !== undefined) {
+    if (typeof name !== "string" || !name.trim()) {
+      throw badRequestError("Category name cannot be empty.");
+    }
+    await assertNameIsFree(name.trim(), categoryId);
+    category.name = name.trim();
+  }
+  if (description !== undefined) {
+    category.des = description.trim();
+  }
+
+  return category.save();
+};
+
+/**
  * Service to delete a category by its ID
  * @param categoryId - The ID of the category to delete
  * @returns Deleted category object
@@ -74,8 +95,3 @@ export const deleteCategoryService = async (categoryId: string) => {
 
   return deletedCategory;
 };
-
-// --------------------- Placeholder for update service ------------------- //
-// export const updateCategoryService = async (categoryId: string, name: string, description: string) => {
-//   Implement update logic here
-// }

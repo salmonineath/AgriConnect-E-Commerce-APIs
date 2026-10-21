@@ -10,8 +10,8 @@ import { notFoundError, badRequestError } from "@/utils/helper/error-helper";
  * @returns 
  */
 export const getCartService = async (userId: string) => {
-    const carts = await cartModel.findOne({ userId}).populate("products.productId").lean();
-    return carts;
+    const carts = await cartModel.findOne({ userId }).populate("products.productId").lean();
+    return carts ?? { userId, products: [] };
 }
 
 /**
@@ -23,31 +23,32 @@ export const getCartService = async (userId: string) => {
  * @returns 
  */
 export const addToCartService = async (userId: string, productId: string, quantity: number) => {
-    // if user try to add 0 it will throw 400 error
-    if (quantity <= 0) {
-        throw badRequestError("Quantity must be at least 1");
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+        throw badRequestError("Quantity must be a whole number of at least 1");
+    }
+    if (!Types.ObjectId.isValid(productId)) {
+        throw badRequestError("Invalid productId");
     }
 
-    // ensure product exists
+    // ensure product exists and can be bought
     const product = await ProductModel.findById(productId).lean();
     if (!product) throw notFoundError("Product not found");
+    if (product.status !== "Available") throw badRequestError("Product is not available");
 
-    const cart = await cartModel.findOne({ userId });
-    if (!cart) {
-        const created = await cartModel.create({
-            userId: new Types.ObjectId(userId),
-            products: [{ productId: new Types.ObjectId(productId), quantify: quantity}],
-        });
-        return created;
-    }
+    const cart = await cartModel.findOne({ userId }) ?? new cartModel({ userId, products: [] });
 
     // find product in cart
-    const itemIndex = cart.products.findIndex((p: any) => p.productId.toString() === productId);
-    if (itemIndex > -1) {
-        cart.products[itemIndex].quantity += quantity;
+    const item = cart.products.find((p) => p.productId.toString() === productId);
+    const newQuantity = (item?.quantity ?? 0) + quantity;
+    if (newQuantity > product.stock) {
+        throw badRequestError(`Only ${product.stock} left in stock`);
+    }
+
+    if (item) {
+        item.quantity = newQuantity;
     } else {
-        cart.products.push({ productId: new Types.ObjectId(productId), quantity: quantity});
-    };
+        cart.products.push({ productId: new Types.ObjectId(productId), quantity });
+    }
 
     await cart.save();
     return cart;
@@ -60,7 +61,7 @@ export const removeFromCartService = async (userId: string, productId: string) =
         throw notFoundError("Cart not found.")
     };
     
-    cart.set("products",cart.products.filter((p: any) => p.productId.toString() !== productId));
+    cart.set("products", cart.products.filter((p) => p.productId.toString() !== productId));
 
     await cart.save();
     return cart;

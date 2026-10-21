@@ -1,36 +1,23 @@
-// import { Request, Response } from "express";
-// import { ApiErrorType } from "@/types/error-type";
+import { Request, Response, NextFunction } from "express";
+import { handleControllerError } from "@/utils/helper/controller-error-handler";
+import { notFoundError } from "@/utils/helper/error-helper";
 
-// /**
-//  * Centralized error handler for all routes.
-//  * Designed for enterprise-level Node.js + TypeScript projects.
-//  */
-// export const errorHandler = (
-//     err: ApiErrorType,
-//     req: Request,
-//     res: Response,
-// ) => {
-//     // Default Error values
-//     let statusCode = err.statusCode || 500;
-//     let message = err.message || "Internal Server Error";
+/**
+ * 404 for any route that did not match.
+ */
+export const notFoundHandler = (_req: Request, _res: Response, next: NextFunction) => {
+    next(notFoundError("Route not found"));
+};
 
-//     // custom error
-//     if (err && typeof err === "object" && "statusCode" in err) {
-//         const typedErr = err as ApiErrorType;
-//         statusCode = typedErr.statusCode || statusCode;
-//         message = typedErr.message || message;
-//     }
-
-//     // Log error
-//     console.error(`[ERROR] ${req.method} ${req.originalUrl}`);
-//     console.error(err);
-
-//     // Send error response
-//     const response = Object.freeze({
-//         status: statusCode,
-//         message,
-//         stack: process.env.NODE_ENV === "development" ? (err as ApiErrorType)?.stack : undefined,
-//     });
-
-//     return res.status(statusCode).json({response});
-// };
+/**
+ * Centralized error handler (must be registered LAST).
+ * Express 5 forwards rejected async handlers here automatically.
+ */
+ 
+export const errorHandler = (err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    // Malformed JSON body from express.json()
+    if (err instanceof SyntaxError && "body" in err) {
+        return res.status(400).json({ success: false, message: "Invalid JSON body" });
+    }
+    return handleControllerError(res, err);
+};

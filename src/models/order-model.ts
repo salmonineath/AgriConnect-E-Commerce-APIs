@@ -1,27 +1,30 @@
-import mongoose, { Types, Schema } from "mongoose";
+import mongoose, { Schema } from "mongoose";
+
+export const ORDER_STATUSES = ["pending", "confirmed", "shipped", "delivered", "cancelled"] as const;
+export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
 const orderSchema = new Schema(
     {
         userId: { 
-            type: Types.ObjectId, 
+            type: Schema.Types.ObjectId, 
             ref: "User", 
             required: true,
         },
         products: [
             {
                 productId: { 
-                    type: Types.ObjectId,
+                    type: Schema.Types.ObjectId,
                     ref: "Product",
                     required: true,
                 },
-                quantity: { type: Number, requried: true },
-                priceAtPurchase: { type: Number, requried: true }
+                quantity: { type: Number, required: true, min: 1 },
+                priceAtPurchase: { type: Number, required: true, min: 0 }
             },
         ],
-        total: { type: Number, requried: true },
+        total: { type: Number, required: true, min: 0 },
         status : {
             type: String,
-            enum: ["pending", "confirmed", "shipping", "devlivered", "canceled"],
+            enum: ORDER_STATUSES,
             default: "pending",
         },
     },

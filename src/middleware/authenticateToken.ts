@@ -4,6 +4,8 @@ import { handleError } from "@/utils/response-util";
 import {  tokenPaylodExtends } from "@/types/auth-type";
 
 declare global {
+    // Global augmentation of Express' Request type requires a namespace
+    // eslint-disable-next-line @typescript-eslint/no-namespace
     namespace Express {
         interface Request {
             user?:  tokenPaylodExtends;
@@ -11,19 +13,26 @@ declare global {
     }
 }
 
+// Accept "Authorization: Bearer <token>" or the httpOnly accessToken cookie
+const getAccessToken = (req: Request): string | undefined => {
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith("Bearer ")) {
+    return authHeader.split(" ")[1];
+  }
+  return req.cookies?.accessToken;
+};
+
 export const authenticateToken = (
   req: Request,
   res: Response,
   next: NextFunction
 ): void | Response => {
   try {
-    const authHeader = req.headers.authorization;
+    const token = getAccessToken(req);
 
-    if (!authHeader?.startsWith("Bearer ")) {
+    if (!token) {
       return handleError(res, 401, "Unauthorized");
     }
-
-    const token = authHeader.split(" ")[1];
     const secret = process.env.JWT_ACCESS_SECRET;
 
     if (!secret) {
@@ -33,13 +42,13 @@ export const authenticateToken = (
     const decoded = jwt.verify(token, secret) as JwtPayload;
 
     if (!decoded?._id || !decoded?.email || !decoded?.roles) {
-      return handleError(res, 400, "Invalid token");
+      return handleError(res, 401, "Invalid token");
     }
 
     req.user = {
       _id: decoded._id,
       email: decoded.email,
-      roles: (decoded as any).roles || [] 
+      roles: Array.isArray(decoded.roles) ? decoded.roles : [],
     };
 
     next();

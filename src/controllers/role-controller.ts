@@ -1,14 +1,14 @@
 import { Request, Response } from "express";
 import { createRoleService, getAllRolesService, getRoleByIdService, deleteRoleByIdService } from "@/services/roles-service";
 import { handleControllerError } from "@/utils/helper/controller-error-handler";
-import { handleError, handleSuccess } from "@/utils/response-util";
+import { handleSuccess } from "@/utils/response-util";
 
 /**
  * Create role controller
  */
 export const createRoleController = async (req: Request, res: Response) => {
   try {
-    const { name, des } = req.body;
+    const { name, des } = req.body ?? {};
 
     const result = await createRoleService(name, des);
 
@@ -55,11 +55,7 @@ export const deleteRoleByIdController = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const deletedRole = await deleteRoleByIdService(id);
-
-    if (!deletedRole) {
-      return ;
-    }
+    await deleteRoleByIdService(id);
 
     return handleSuccess(res, 200, "Role deleted successfully.");
   }  catch (error) {
