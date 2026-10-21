@@ -6,6 +6,7 @@ import CateRouter from "./category-route";
 import ProductRouter from "./product-route";
 import cartRouter from "./cart-route";
 import OrderRouter from "./order-route";
+import FarmerRouter from "./farmer-route";
 
 const router = Router();
 
@@ -24,6 +25,8 @@ router.use("/", ProductRouter);
 router.use("/", cartRouter);
 
 router.use("/", OrderRouter);
+
+router.use("/", FarmerRouter);
 
 export default router;
 

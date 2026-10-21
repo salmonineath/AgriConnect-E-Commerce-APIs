@@ -1,9 +1,10 @@
 import { Request, Response } from "express";
 import { handleSuccess, handleError } from "@/utils/response-util";
 import { handleControllerError } from "@/utils/helper/controller-error-handler";
-import { checkoutService } from "@/services/checkout-service";
+import { checkoutService, parseCheckoutInput } from "@/services/checkout-service";
 import {
     cancelMyOrderService,
+    payOrderService,
     getAllOrdersService,
     getOrdersByUserService,
     updateOrderStatusService,
@@ -16,7 +17,8 @@ export const checkoutController = async (req: Request, res: Response) => {
             return handleError(res, 401, "Unauthorized");
         }
 
-        const order = await checkoutService(req.user._id);
+        const input = parseCheckoutInput(req.body);
+        const order = await checkoutService(req.user._id, input);
 
         return handleSuccess(res, 201, "Order placed successfully", order);
     } catch (error) {
@@ -49,6 +51,21 @@ export const cancelMyOrderController = async (req: Request, res: Response) => {
         const order = await cancelMyOrderService(req.params.id, req.user._id);
 
         return handleSuccess(res, 200, "Order cancelled successfully", order);
+    } catch (error) {
+        handleControllerError(res, error);
+    }
+};
+
+// pay for my card order (simulated provider)
+export const payOrderController = async (req: Request, res: Response) => {
+    try {
+        if (!req.user) {
+            return handleError(res, 401, "Unauthorized");
+        }
+
+        const order = await payOrderService(req.params.id, req.user._id, req.body?.paymentToken);
+
+        return handleSuccess(res, 200, "Payment successful", order);
     } catch (error) {
         handleControllerError(res, error);
     }

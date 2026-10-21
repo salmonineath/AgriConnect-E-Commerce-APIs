@@ -44,7 +44,14 @@ const productSchema = new Schema<IProductModel>(
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
             required: false
-        }
+        },
+
+        images: [
+            {
+                filename: { type: String, required: true },
+                url: { type: String, required: true },
+            }
+        ]
     },
     { 
         timestamps: true 
