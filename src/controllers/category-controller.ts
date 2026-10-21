@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from "express"
+import { Request, Response } from "express"
 import { createCategoryService, getAllCategoriesService, getCategoryByIdService, deleteCategoryService } from "@/services/category-service"
 import { handleSuccess } from "@/utils/response-util"
 import { handleControllerError } from "@/utils/helper/controller-error-handler"
@@ -9,7 +9,7 @@ import { handleControllerError } from "@/utils/helper/controller-error-handler"
  * @param res 
  * @returns 
  */
-export const createCategoryController = async (req: Request, res: Response, next: NextFunction) => {
+export const createCategoryController = async (req: Request, res: Response) => {
   try {
     const { name, des } = req.body;
 
@@ -28,7 +28,7 @@ export const createCategoryController = async (req: Request, res: Response, next
  * @param res
  * @returns
  */
-export const getAllCategoriesController = async (_req: Request, res: Response, next: NextFunction) => {
+export const getAllCategoriesController = async (_req: Request, res: Response) => {
   try {
     const categoriesList = await getAllCategoriesService();
 

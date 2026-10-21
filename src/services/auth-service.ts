@@ -103,7 +103,6 @@ export const registerService = async (data: UserPayload) => {
     });
 
     newUser.refreshToken = tokens.refreshToken;
-    await newUser.save();
     const userObj = newUser.toObject();
     // remove sensitive fields
     // delete userObj.password;
