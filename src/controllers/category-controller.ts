@@ -1,5 +1,5 @@
 import { Request, Response } from "express"
-import { createCategoryService, getAllCategoriesService, getCategoryByIdService, deleteCategoryService } from "@/services/category-service"
+import { createCategoryService, getAllCategoriesService, getCategoryByIdService, updateCategoryService, deleteCategoryService } from "@/services/category-service"
 import { handleSuccess } from "@/utils/response-util"
 import { handleControllerError } from "@/utils/helper/controller-error-handler"
 
@@ -11,9 +11,9 @@ import { handleControllerError } from "@/utils/helper/controller-error-handler"
  */
 export const createCategoryController = async (req: Request, res: Response) => {
   try {
-    const { name, des } = req.body;
+    const { name, des } = req.body ?? {};
 
-    const createdCategory = await createCategoryService(name, des);
+    const createdCategory = await createCategoryService(name, des, req.user?._id);
 
     return handleSuccess(res, 201, "Category created successfully", createdCategory);
 
@@ -52,6 +52,26 @@ export const getCategoryByIdController = async (req: Request, res: Response) => 
     const foundCategory = await getCategoryByIdService(id);
 
     return handleSuccess(res, 200, "Category retrieved successfully", foundCategory);
+
+  } catch (error) {
+    handleControllerError(res, error);
+  }
+}
+
+/**
+ * Controller to update a category by ID
+ * @param req
+ * @param res
+ * @returns
+ */
+export const updateCategoryController = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { name, des } = req.body ?? {};
+
+    const updatedCategory = await updateCategoryService(id, name, des);
+
+    return handleSuccess(res, 200, "Category updated successfully", updatedCategory);
 
   } catch (error) {
     handleControllerError(res, error);

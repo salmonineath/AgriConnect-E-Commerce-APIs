@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { createProductService, getAllProductService, getProductByIdService, updateProductByIdService, deleteProductByIdService } from "@/services/product-service";
 import { handleControllerError } from "@/utils/helper/controller-error-handler";
 import { ProductPayload } from "@/types/product-type";
-import { handleSuccess } from "@/utils/response-util";
+import { handleError, handleSuccess } from "@/utils/response-util";
 
 /**
  * 
@@ -12,26 +12,15 @@ import { handleSuccess } from "@/utils/response-util";
  */
 export const createProductController = async (req: Request, res: Response) => {
   try {
-    // Get user from auth middleware
-    const user = (req as any).user;
-    if (!user || !user._id) {
-      return res.status(401).json({ success: false, message: "Unauthorized" });
+    if (!req.user) {
+      return handleError(res, 401, "Unauthorized");
     }
 
-    // Get product payload from body
     const dataPayload: ProductPayload = req.body;
+    const product = await createProductService(dataPayload, req.user._id);
 
-    // Call service
-    const product = await createProductService(dataPayload, user._id);
-
-    // Return success
-    return res.status(201).json({
-      success: true,
-      message: "Product created successfully",
-      product,
-    });
+    return handleSuccess(res, 201, "Product created successfully", product);
   } catch (error) {
-    // Use advanced error handler
     handleControllerError(res, error);
   }
 };
@@ -62,10 +51,12 @@ export const getProductByIdController = async (req: Request, res: Response) => {
 // update product by Id 
 export const updateProductByIdController = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-    const dataPayload: ProductPayload = req.body;
+    if (!req.user) {
+      return handleError(res, 401, "Unauthorized");
+    }
 
-    const updatedProduct = await updateProductByIdService(id, dataPayload);
+    const { id } = req.params;
+    const updatedProduct = await updateProductByIdService(id, req.body, req.user);
 
     return handleSuccess(res, 200, "Product updated successfully.", updatedProduct);
   } catch (error) {
@@ -76,8 +67,12 @@ export const updateProductByIdController = async (req: Request, res: Response) =
 // delete product by Id
 export const deleteProductByIdController = async (req: Request, res: Response) => {
   try {
+    if (!req.user) {
+      return handleError(res, 401, "Unauthorized");
+    }
+
     const { id } = req.params;
-    const deletedProduct = await deleteProductByIdService(id);
+    await deleteProductByIdService(id, req.user);
 
     return handleSuccess(res, 200, "Product deleted successfully.");
   } catch (error) {

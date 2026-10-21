@@ -4,17 +4,17 @@ import { rolesModel } from "@/models/role-model";
 
 export const createRoleService = async (name: string, des?: string) => {
   
-  if (!name?.trim()) {
+  if (typeof name !== "string" || !name.trim()) {
     throw badRequestError("Role name is required");
   }
 
-  const existRole = await rolesModel.findOne({ name: name.trim() });
+  const existRole = await rolesModel.findOne({ name: name.trim().toUpperCase() });
   if (existRole) {
     throw badRequestError("This role already exists");
   }
 
   const newRole = await rolesModel.create({
-    name: name.trim(),
+    name: name.trim().toUpperCase(),
     des: des || "",
   });
 
@@ -23,13 +23,7 @@ export const createRoleService = async (name: string, des?: string) => {
 
 // get all role
 export const getAllRolesService = async () => {
-  const getRoles = await rolesModel.find();
-
-  if (!getRoles) {
-    throw notFoundError("No roles found");
-  }
-
-  return getRoles;
+  return rolesModel.find().sort({ name: 1 });
 };
 
 // get role by id
@@ -54,5 +48,4 @@ export const deleteRoleByIdService = async (id: string) => {
   return deleteRole;
 };
 
-// ======================== Update role by id ================== //
 

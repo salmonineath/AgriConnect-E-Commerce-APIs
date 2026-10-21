@@ -1,12 +1,12 @@
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import { Types } from "mongoose";
 import { UserModel } from "@/models/user-model";
 import { generateTokens } from "@/utils/token/jwt";
 import { UserPayload } from "@/types/user-type";
 import { 
     badRequestError, 
-    notFoundError, 
     unauthorizedError
 } from "@/utils/helper/error-helper";
 import { clearAuthCookies } from "@/utils/token/cookies";
@@ -15,62 +15,56 @@ import { rolesModel, IRoleModel } from "@/models/role-model";
 
 type JwtDecoded = { _id: string };
 
-/**
- * Refresh tokens: verify incoming refresh token, ensure it matches DB,
- * generate new tokens and rotate the stored refresh token.
- */
-export const refreshTokenService = async (refreshToken: string) => {
-
-    if (!refreshToken) {
-        throw notFoundError("No refresh token found..");
-    }
-
-    const decoded = jwt.verify(
-        refreshToken,
-        process.env.JWT_REFRESH_SECRET as string
-    ) as JwtDecoded;
-
-    const user = await UserModel.findById(decoded._id);
-    if (!user || user.refreshToken !== refreshToken) {
-        throw unauthorizedError("Invalid refresh token.");
-    }
-
-    // Fetch user role
-    const fetchUserRole = await UserRoleModel.find({ user_id: user._id}).populate<{ role_id: IRoleModel }>("role_id");
-
-    // Extract role name
-    const roles = fetchUserRole.map((ur) => (ur.role_id).name);
-
-    // rotate tokens
-    const tokens = generateTokens({
-        _id: user._id.toString(),
-        email: user.email,
-        roles: roles,
-    });
-
-    user.refreshToken = tokens.refreshToken;
-
-    await user.save();
-    return tokens;
-}
-
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD_LENGTH = 8;
 
 /**
- * Register a new user, hash password, store refresh token, return user (without sensitive fields) and tokens
+ * Validate the register payload. Throws 400 with a clear message.
  */
-export const registerService = async (data: UserPayload) => {
+const validateUserPayload = (data: Partial<UserPayload>) => {
+    const { full_name, user_name, email, phone, password } = data ?? {};
+    const fields = { full_name, user_name, email, phone, password };
+    const missing = Object.entries(fields)
+        .filter(([, value]) => typeof value !== "string" || !value.trim())
+        .map(([key]) => key);
 
+    if (missing.length) {
+        throw badRequestError(`Missing required fields: ${missing.join(", ")}`);
+    }
+    if (!EMAIL_PATTERN.test(email as string)) {
+        throw badRequestError("Email is not valid.");
+    }
+    if ((password as string).length < MIN_PASSWORD_LENGTH) {
+        throw badRequestError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+    }
+};
+
+/**
+ * Get the role names of a user, e.g. ["CUSTOMER"]
+ */
+const getUserRoleNames = async (userId: Types.ObjectId | string) => {
+    const userRoles = await UserRoleModel.find({ user_id: userId }).populate<{ role_id: IRoleModel }>("role_id");
+    return userRoles.map((ur) => ur.role_id?.name).filter((name): name is string => Boolean(name));
+};
+
+/**
+ * Create a user with a hashed password and one role.
+ */
+export const createUserWithRole = async (data: UserPayload, roleName: string) => {
+    validateUserPayload(data);
     const { full_name, user_name, email, phone, password } = data;
 
     const existUser = await UserModel.findOne({
-        $or: [{ user_name }, { email }],
+        $or: [{ user_name }, { email: email.toLowerCase() }],
     });
     if (existUser) {
         throw badRequestError("User with this email or username already exist.");
     }
 
-    const hashed = await bcrypt.hash(password, 12);
+    const role = await rolesModel.findOne({ name: roleName });
+    if (!role) throw new Error(`Role ${roleName} not found. Run "npm run seed:roles" first.`);
 
+    const hashed = await bcrypt.hash(password, 12);
     const newUser = await UserModel.create({
         full_name,
         user_name,
@@ -79,36 +73,61 @@ export const registerService = async (data: UserPayload) => {
         password: hashed,
     });
 
-    // assign a default role
-    const defaultRole = await rolesModel.findOne({ name: "CUSTOMER" });
-    if (!defaultRole) throw new Error("Default role not found.");
+    await UserRoleModel.create({ user_id: newUser._id, role_id: role._id });
+    return newUser;
+};
 
-    // create record in user_roles
-    await UserRoleModel.create({
-        user_id: newUser._id,
-        role_id: defaultRole._id,
-    });
-
-    // Fetch user role
-    const fetchUserRole = await UserRoleModel.find({ user_id: newUser._id }).populate<{ role_id: IRoleModel }>("role_id");
-
-    // Extract role name
-    const roles = fetchUserRole.map((ur) => (ur.role_id as IRoleModel).name);
-    // console.log("===ROLE===", roles)
-
+/**
+ * Issue new tokens for a user and store the refresh token (rotation).
+ */
+const issueTokens = async (user: InstanceType<typeof UserModel>) => {
+    const roles = await getUserRoleNames(user._id);
     const tokens = generateTokens({
-        _id: newUser._id.toString(),
-        email: newUser.email,
-        roles: roles,
+        _id: user._id.toString(),
+        email: user.email,
+        roles,
     });
 
-    newUser.refreshToken = tokens.refreshToken;
-    const userObj = newUser.toObject();
-    // remove sensitive fields
-    // delete userObj.password;
-    // delete userObj.refreshToken;
+    user.refreshToken = tokens.refreshToken;
+    await user.save();
+    return { tokens, roles };
+};
 
-    return { user: userObj, roles: roles };
+/**
+ * Refresh tokens: verify incoming refresh token, ensure it matches DB,
+ * generate new tokens and rotate the stored refresh token.
+ */
+export const refreshTokenService = async (refreshToken: string) => {
+
+    if (!refreshToken) {
+        throw unauthorizedError("No refresh token found.");
+    }
+
+    let decoded: JwtDecoded;
+    try {
+        decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET as string) as JwtDecoded;
+    } catch {
+        throw unauthorizedError("Invalid refresh token.");
+    }
+
+    const user = await UserModel.findById(decoded._id);
+    if (!user || user.refreshToken !== refreshToken) {
+        throw unauthorizedError("Invalid refresh token.");
+    }
+
+    const { tokens } = await issueTokens(user);
+    return tokens;
+}
+
+
+/**
+ * Register a new customer, hash password, store refresh token, return user (without sensitive fields) and tokens
+ */
+export const registerService = async (data: UserPayload) => {
+    const newUser = await createUserWithRole(data, "CUSTOMER");
+    const { tokens, roles } = await issueTokens(newUser);
+
+    return { user: newUser.toObject(), roles, tokens };
 };
 
 
@@ -117,63 +136,45 @@ export const registerService = async (data: UserPayload) => {
  */
 export const loginService = async (data: UserPayload) => {
 
-    const { user_name, password } = data;
-    
-    const existingUser = await UserModel.findOne({ user_name });
-    if (!existingUser) {
-        throw notFoundError("USER NOT FOUND.");
+    const { user_name, password } = data ?? {};
+    if (!user_name || !password) {
+        throw badRequestError("user_name and password are required.");
     }
-
-    const isMatch = await bcrypt.compare(password, existingUser.password);
-    if (!isMatch) {
+    
+    // Same message for unknown user and wrong password, so attackers can't discover usernames
+    const existingUser = await UserModel.findOne({ user_name });
+    const isMatch = existingUser ? await bcrypt.compare(password, existingUser.password) : false;
+    if (!existingUser || !isMatch) {
         throw unauthorizedError("Invalid username or password.");
     }
+    if (existingUser.status !== "ACTIVE") {
+        throw unauthorizedError("This account is inactive.");
+    }
 
-    // Fetch user role
-    const fetchUserRole = await UserRoleModel.find({ user_id: existingUser._id}).populate("role_id")
-
-    // Extract role name
-    const roles = fetchUserRole.map((ur) => (ur.role_id as any).name);
-
-    const tokens = generateTokens({
-        _id: existingUser._id.toString(),
-        email: existingUser.email,
-        roles: roles,
-    });
-
-    existingUser.refreshToken = tokens.refreshToken;
-
-    const savedUser = await existingUser.save();
-    const userObj = savedUser.toObject();
-    // delete userObj.password;
-    // delete userObj.refreshToken;
-
-    // Role formatter
+    const { tokens, roles } = await issueTokens(existingUser);
 
     return {
         tokens,
-        user: userObj,
-        roles: roles
+        user: existingUser.toObject(),
+        roles
     };
 };
 
 
 /**
- * Logout: clear both refreshToken and accessToken from cookie and response a success message
+ * Logout: invalidate the stored refresh token and clear both cookies
  */
-export const logoutService = async (_req: Request, res: Response) => {
+export const logoutService = async (req: Request, res: Response) => {
+    const refreshToken = req.cookies?.refreshToken;
+    if (refreshToken) {
+        await UserModel.updateOne({ refreshToken }, { $unset: { refreshToken: 1 } });
+    }
 
     // Clear cookies
     clearAuthCookies(res);
 
     return res.status(200).json({
+      success: true,
       message: "User logout successfully.",
     });
 };
-
-/**
- * Remove account: find user in the database and remove the user 
- */
-export const removeMyAccountService = async () => {
-    // code 
-}

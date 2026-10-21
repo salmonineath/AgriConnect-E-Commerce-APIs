@@ -7,9 +7,14 @@
     "seed:admin": "ts-node --transpile-only src/scripts/seed-admin.ts",
     "seed:customer": "ts-node --transpile-only src/scripts/seed-customer.ts",
     "seed:farmer": "ts-node --transpile-only src/scripts/seed-farmer.ts",
-    "test": "echo \"Error: no test specified\" && exit 1",
-     "build": "tsc",
-    "dev": "nodemon"
+    "test": "vitest run",
+    "build": "tsc && tsc-alias",
+    "dev": "nodemon",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "seed:roles": "ts-node --transpile-only src/scripts/seed-roles.ts",
+    "seed": "npm run seed:roles && npm run seed:admin && npm run seed:farmer && npm run seed:customer",
+    "start": "node dist/server.js"
   },
   "repository": {
     "type": "git",
@@ -25,18 +30,17 @@
   "homepage": "https://github.com/neathcmd/AgriConnect-E-Commerce-APIs#readme",
   "dependencies": {
     "bcrypt": "^6.0.0",
-    "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.19.3",
-    "swagger-autogen": "^2.23.7",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@tsconfig/node22": "^22.0.2",
     "@types/bcrypt": "^6.0.0",
     "@types/cookie-parser": "^1.4.10",
@@ -44,11 +48,19 @@
     "@types/express": "^5.0.5",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^24.10.0",
+    "@types/supertest": "^7.2.1",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
+    "eslint": "^9.39.5",
+    "globals": "^17.13.0",
+    "mongodb-memory-server": "^11.3.0",
     "nodemon": "^3.1.10",
+    "supertest": "^7.3.1",
     "ts-node": "^10.9.2",
+    "tsc-alias": "^1.9.8",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.0",
+    "vitest": "^5.0.5"
   }
 }

@@ -15,18 +15,16 @@ import { setAuthCookies } from "@/utils/token/cookies";
  */
 export const registerController = async (req: Request, res: Response) => {
     try {
-        const { user, roles } = await registerService(req.body);
-        const tokens = (user as any).tokens;
+        const { user, roles, tokens } = await registerService(req.body);
 
-        if (tokens) {
-            setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
-        }
+        setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
 
         res.status(201).json({
+            success: true,
             message: "User registered successfully.",
+            accessToken: tokens.accessToken,
             user,
-            roles
-            // ...(tokens ? { accessToken: tokens.accessToken } : {}),
+            roles,
         });
     } catch (err) {
         handleControllerError(res, err);
@@ -45,6 +43,7 @@ export const loginController = async (req: Request, res: Response) => {
         setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
 
         res.status(200).json({
+            success: true,
             message: "Login successful.",
             accessToken: tokens.accessToken,
             user,
@@ -62,12 +61,13 @@ export const loginController = async (req: Request, res: Response) => {
  */
 export const refreshTokenController = async (req: Request, res: Response) => {
     try {
-        const refreshToken = req.cookies.refreshToken;
+        const refreshToken = req.cookies?.refreshToken;
         const tokens = await refreshTokenService(refreshToken);
 
         setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
 
         res.status(200).json({
+            success: true,
             message: "Access token refreshed.",
             accessToken: tokens.accessToken,
         });
@@ -83,6 +83,9 @@ export const refreshTokenController = async (req: Request, res: Response) => {
  * @returns 
  */
 export const logoutController = async (req: Request, res: Response) => {
-    const result = await logoutService(req, res);
-    return result;
+    try {
+        return await logoutService(req, res);
+    } catch (err) {
+        handleControllerError(res, err);
+    }
 };
