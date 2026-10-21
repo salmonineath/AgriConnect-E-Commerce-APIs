@@ -9,7 +9,14 @@ export interface IProduct {
     category: Types.ObjectId;
     status: ProductStatus;
     user_id: Types.ObjectId;
+    images: Types.DocumentArray<ProductImage>;
 }
+
+export type ProductImage = {
+    _id: Types.ObjectId;
+    filename: string;
+    url: string;
+};
 
 export type ProductPayload = {
     product_name: string;

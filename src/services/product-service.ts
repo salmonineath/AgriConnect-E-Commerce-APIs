@@ -3,6 +3,7 @@ import { ProductPayload } from "@/types/product-type";
 import { tokenPaylodExtends } from "@/types/auth-type";
 import { badRequestError, forbiddenError, notFoundError } from "@/utils/helper/error-helper";
 import { categoryModel } from "@/models/category-model";
+import { deleteImageFile, MAX_IMAGES_PER_PRODUCT } from "@/config/upload";
 
 const findCategoryByName = async (name: string) => {
     const category = await categoryModel.findOne({ name });
@@ -64,16 +65,12 @@ export const createProductService = async (dataPayload: ProductPayload, userId: 
     return newProduct;
 };
 
-/**
- * Get all product and get product by Id
- */
-export const getAllProductService = async () => {
-    return ProductModel.find().populate("category", "name").lean();
-};
-
 // get product by id
 export const getProductByIdService = async (productId: string) => {
-    const productData = await ProductModel.findById(productId).populate("category", "name").lean();
+    const productData = await ProductModel.findById(productId)
+        .populate("category", "name")
+        .populate("user_id", "full_name")
+        .lean();
 
     if (!productData) {
         throw notFoundError("Product not found.");
@@ -103,9 +100,51 @@ export const updateProductByIdService = async (
     return product.save();
 };
 
-// delete product
+// delete product (and its image files)
 export const deleteProductByIdService = async (productId: string, user: tokenPaylodExtends) => {
     const product = await findOwnedProduct(productId, user);
     await product.deleteOne();
+    await Promise.all(product.images.map((image) => deleteImageFile(image.filename)));
     return product;
 }
+
+// Check ownership and image limit before any file is written
+export const assertCanAddImages = async (productId: string, user: tokenPaylodExtends) => {
+    const product = await findOwnedProduct(productId, user);
+    if (product.images.length >= MAX_IMAGES_PER_PRODUCT) {
+        throw badRequestError(`A product can have at most ${MAX_IMAGES_PER_PRODUCT} images.`);
+    }
+    return product;
+};
+
+// add uploaded image files to a product
+export const addProductImagesService = async (
+    productId: string,
+    user: tokenPaylodExtends,
+    files: { filename: string }[],
+) => {
+    const product = await findOwnedProduct(productId, user);
+    if (product.images.length + files.length > MAX_IMAGES_PER_PRODUCT) {
+        await Promise.all(files.map((f) => deleteImageFile(f.filename)));
+        throw badRequestError(`A product can have at most ${MAX_IMAGES_PER_PRODUCT} images.`);
+    }
+
+    for (const file of files) {
+        product.images.push({ filename: file.filename, url: `/uploads/products/${file.filename}` });
+    }
+    return product.save();
+};
+
+// remove one image from a product
+export const deleteProductImageService = async (productId: string, imageId: string, user: tokenPaylodExtends) => {
+    const product = await findOwnedProduct(productId, user);
+    const image = product.images.id(imageId);
+    if (!image) {
+        throw notFoundError("Image not found.");
+    }
+
+    product.images.pull(image._id);
+    await product.save();
+    await deleteImageFile(image.filename);
+    return product;
+};

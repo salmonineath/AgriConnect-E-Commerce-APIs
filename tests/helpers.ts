@@ -26,3 +26,26 @@ export const createUserAndLogin = async (role: "ADMIN" | "FARMER" | "CUSTOMER") 
 };
 
 export const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
+
+export const ADDRESS = {
+  recipient_name: "Sok Dara",
+  phone: "012345678",
+  address_line: "St 271, Toul Kork",
+  city: "Phnom Penh",
+};
+
+export const checkout = (token: string, paymentMethod: "cash_on_delivery" | "card" = "cash_on_delivery") =>
+  api().post("/api/orders/checkout").set(auth(token)).send({ shippingAddress: ADDRESS, paymentMethod });
+
+/**
+ * Admin + category + one farmer with one product. Returns everyone's tokens.
+ */
+export const setupShop = async (stock = 5, price = 1.5) => {
+  const admin = await createUserAndLogin("ADMIN");
+  const farmer = await createUserAndLogin("FARMER");
+  const customer = await createUserAndLogin("CUSTOMER");
+  await api().post("/api/categories").set(auth(admin.token)).send({ name: "Vegetables" });
+  const product = await api().post("/api/products").set(auth(farmer.token))
+    .send({ product_name: "Carrot", product_des: "Organic", price, stock, category: "Vegetables" });
+  return { admin, farmer, customer, productId: product.body.data._id as string };
+};

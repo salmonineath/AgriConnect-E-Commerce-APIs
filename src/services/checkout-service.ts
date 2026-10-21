@@ -1,9 +1,9 @@
 import { Types } from "mongoose";
 import { cartModel } from "@/models/cart-model";
 import { ProductModel, IProductModel } from "@/models/product-model";
-import { orderModel } from "@/models/order-model";
+import { orderModel, PAYMENT_METHODS, PaymentMethod } from "@/models/order-model";
 import { badRequestError } from "@/utils/helper/error-helper";
-import { CheckoutResult } from "@/types/order-type";
+import { CheckoutInput, CheckoutResult, ShippingAddress } from "@/types/order-type";
 
 type StockChange = { productId: Types.ObjectId; quantity: number };
 
@@ -16,6 +16,36 @@ export const restoreStock = async (items: StockChange[]) => {
     );
 };
 
+const REQUIRED_ADDRESS_FIELDS = ["recipient_name", "phone", "address_line", "city"] as const;
+
+/**
+ * Validate the checkout body and return a clean copy (unknown fields dropped).
+ */
+export const parseCheckoutInput = (body: unknown): CheckoutInput => {
+    const { shippingAddress, paymentMethod } = (body ?? {}) as Record<string, unknown>;
+
+    if (!PAYMENT_METHODS.includes(paymentMethod as PaymentMethod)) {
+        throw badRequestError(`paymentMethod must be one of: ${PAYMENT_METHODS.join(", ")}`);
+    }
+
+    const address = (shippingAddress ?? {}) as Record<string, unknown>;
+    const missing = REQUIRED_ADDRESS_FIELDS.filter(
+        (field) => typeof address[field] !== "string" || !(address[field] as string).trim(),
+    );
+    if (missing.length) {
+        throw badRequestError(`shippingAddress is missing: ${missing.join(", ")}`);
+    }
+
+    const cleanAddress: ShippingAddress = {
+        recipient_name: address.recipient_name as string,
+        phone: address.phone as string,
+        address_line: address.address_line as string,
+        city: address.city as string,
+        ...(typeof address.note === "string" ? { note: address.note } : {}),
+    };
+    return { shippingAddress: cleanAddress, paymentMethod: paymentMethod as PaymentMethod };
+};
+
 /**
  * Checkout service.
  *
@@ -23,7 +53,7 @@ export const restoreStock = async (items: StockChange[]) => {
  * stock is decremented with an atomic "only if enough stock" update, and if
  * any step fails, the stock already taken is put back.
  */
-export const checkoutService = async (userId: string): Promise<CheckoutResult> => {
+export const checkoutService = async (userId: string, input: CheckoutInput): Promise<CheckoutResult> => {
     // Load cart and populate product info
     const cart = await cartModel
         .findOne({ userId })
@@ -44,7 +74,13 @@ export const checkoutService = async (userId: string): Promise<CheckoutResult> =
             throw badRequestError(`Product is not available: ${product.product_name}`);
         }
         total += product.price * item.quantity;
-        return { productId: product._id, quantity: item.quantity, priceAtPurchase: product.price };
+        return {
+            productId: product._id,
+            product_name: product.product_name,
+            farmerId: product.user_id,
+            quantity: item.quantity,
+            priceAtPurchase: product.price,
+        };
     });
 
     // Reserve stock one product at a time; roll back on the first failure
@@ -66,6 +102,8 @@ export const checkoutService = async (userId: string): Promise<CheckoutResult> =
             products: orderProducts,
             total,
             status: "pending",
+            shippingAddress: input.shippingAddress,
+            payment: { method: input.paymentMethod, status: "unpaid" },
         });
 
         // Clear the user's cart after successful order creation
@@ -74,8 +112,12 @@ export const checkoutService = async (userId: string): Promise<CheckoutResult> =
         return {
             orderId: order._id.toString(),
             total,
+            status: order.status,
+            payment: { method: input.paymentMethod, status: "unpaid" },
+            shippingAddress: input.shippingAddress,
             products: orderProducts.map((p) => ({
                 productId: p.productId.toString(),
+                product_name: p.product_name,
                 quantity: p.quantity,
                 price: p.priceAtPurchase,
             })),

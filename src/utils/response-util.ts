@@ -27,3 +27,17 @@ export const handleSuccess = (
     data: data || null,
   });
 };
+
+// ----- PAGINATED SUCCESS RESPONSE -----
+export const handlePaginatedSuccess = (
+  res: Response,
+  message: string,
+  result: { items: unknown[]; pagination: Record<string, number> }
+): Response => {
+  return res.status(200).json({
+    success: true,
+    message,
+    data: result.items,
+    pagination: result.pagination,
+  });
+};
